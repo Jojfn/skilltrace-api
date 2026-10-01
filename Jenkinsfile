@@ -157,7 +157,14 @@ pipeline {
         /* ---------------------------------------------------------------- 6 */
         stage('Release') {
             when {
-                branch 'main'
+                // A single-branch "pipeline script from SCM" job does not set
+                // BRANCH_NAME - that is a multibranch-only variable - so
+                // `branch 'main'` would silently never match. The git plugin
+                // does set GIT_BRANCH, typically as "origin/main".
+                expression {
+                    def ref = env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'main'
+                    return ref == 'main' || ref.endsWith('/main')
+                }
             }
             steps {
                 echo "Promoting the staging-verified artefact to production as v${VERSION}"
