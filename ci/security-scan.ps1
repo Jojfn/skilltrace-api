@@ -171,9 +171,15 @@ if ($secretHits.Count -gt 0) {
   Write-Host "[security] secret scan clean"
 }
 $summary.Add("")
-$summary.Add("Runtime signing keys are generated per environment at deploy time and " +
-             "stored outside the repository; production refuses to start with the " +
-             "development default (see assertProductionConfig).")
+$summary.Add("")
+$summary.Add("**Triage.** Hits in ``tests/`` are fixture passwords used to drive the test " +
+             "suite; they grant no access to anything and are not credentials. The hit in " +
+             "``src/config.js`` is the development JWT signing default, which is real and " +
+             "deliberately visible: it exists so the service runs locally without setup. " +
+             "It is mitigated rather than removed - ``assertProductionConfig()`` refuses to " +
+             "start a production process using it, or with a secret shorter than 32 " +
+             "characters, and a unit test asserts that. Runtime signing keys are generated " +
+             "per environment at deploy time and stored outside the repository.")
 
 $summary -join "`r`n" | Out-File -FilePath (Join-Path $ReportDir "security-summary.md") -Encoding utf8
 Write-Host "[security] report written to $ReportDir/security-summary.md"

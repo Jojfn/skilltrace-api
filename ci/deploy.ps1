@@ -73,17 +73,55 @@ $env:DATA_FILE   = (Join-Path $dataDir "skilltrace.json")
 $env:ALLOW_CHAOS = $AllowChaos
 $env:JWT_SECRET  = $jwtSecret
 
-# Removing a process that was never started is not an error, but pm2 writes
-# to stderr when it happens and PowerShell would treat that as fatal. Route
-# it through cmd so the noise is swallowed either way.
-cmd /c "`"$Pm2Cmd`" delete $AppName >nul 2>&1"
+# PM2 is invoked through Start-Process with its handles redirected to files.
+# PM2 leaves a background daemon running, and if that daemon inherits the
+# output pipe of the calling shell, Jenkins never sees the command finish and
+# the stage hangs instead of completing. Redirecting to files breaks the
+# inheritance, and passing arguments as an array avoids nested-quote parsing
+# problems in the process path.
+$pm2Out = Join-Path $logDir "pm2.out.log"
+$pm2Err = Join-Path $logDir "pm2.err.log"
 
-& $Pm2Cmd start (Join-Path $current "src\server.js") --name $AppName `
-    --time --output (Join-Path $logDir "out.log") --error (Join-Path $logDir "err.log") `
-    --update-env
-if ($LASTEXITCODE -ne 0) { throw "pm2 failed to start $AppName" }
+function Invoke-Pm2 {
+  param([string[]]$Arguments)
+  $proc = Start-Process -FilePath $Pm2Cmd -ArgumentList $Arguments -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $pm2Out -RedirectStandardError $pm2Err
+  return $proc.ExitCode
+}
 
-cmd /c "`"$Pm2Cmd`" save --force >nul 2>&1"
+# Removing a process that was never started is not an error here.
+Invoke-Pm2 @("delete", $AppName) | Out-Null
+
+$startArgs = @(
+  "start", (Join-Path $current "src\server.js"),
+  "--name", $AppName,
+  "--time",
+  "--output", (Join-Path $logDir "out.log"),
+  "--error",  (Join-Path $logDir "err.log"),
+  "--update-env"
+)
+$code = Invoke-Pm2 $startArgs
+Get-Content $pm2Out -ErrorAction SilentlyContinue | Select-Object -First 3
+if ($code -ne 0) {
+  Get-Content $pm2Err -ErrorAction SilentlyContinue | Select-Object -Last 20
+  throw "pm2 failed to start $AppName (exit $code)"
+}
+
+Invoke-Pm2 @("save", "--force") | Out-Null
+
+# Confirm PM2 really has it running before the stage claims success.
+# (pm2 jlist is not used here: its JSON carries both "username" and "USERNAME",
+# which PowerShell's case-insensitive ConvertFrom-Json rejects as duplicate keys.)
+$pidFile = Join-Path $logDir "pm2.pid.txt"
+Start-Process -FilePath $Pm2Cmd -ArgumentList @("pid", $AppName) -NoNewWindow -Wait `
+  -RedirectStandardOutput $pidFile -RedirectStandardError $pm2Err | Out-Null
+$runningPid = (Get-Content $pidFile -Raw -ErrorAction SilentlyContinue).Trim()
+if ($runningPid -match '^\d+$' -and [int]$runningPid -gt 0) {
+  Write-Host "[deploy] pm2 reports $AppName online (pid $runningPid)"
+} else {
+  throw "pm2 did not report a running pid for $AppName"
+}
+
 Write-Host "[deploy] $AppName running on port $Port (env=$EnvName)"
 if ($previous) { Write-Host "[deploy] previous release retained for rollback: $previous" }
 exit 0

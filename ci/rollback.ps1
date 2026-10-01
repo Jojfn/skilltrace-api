@@ -28,6 +28,8 @@ if ($candidates.Count -eq 0) {
 $target = $candidates[0].FullName
 if (Test-Path $current) { cmd /c rmdir "$current" | Out-Null }
 cmd /c mklink /J "$current" "$target" | Out-Null
-& $Pm2Cmd restart $AppName --update-env | Out-Null
+Start-Process -FilePath $Pm2Cmd -ArgumentList @("restart", $AppName, "--update-env") `
+  -NoNewWindow -Wait -RedirectStandardOutput (Join-Path $TargetRoot "logs\rollback.out.log") `
+  -RedirectStandardError (Join-Path $TargetRoot "logs\rollback.err.log") | Out-Null
 Write-Host "[rollback] $AppName rolled back to $target"
 exit 0
