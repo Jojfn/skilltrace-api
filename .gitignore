@@ -1,0 +1,11 @@
+node_modules/
+coverage/
+reports/
+dist/
+data/
+.scannerwork/
+sonar-scanner/
+*.zip
+*.tgz
+.env
+src/build-info.json
