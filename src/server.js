@@ -3,6 +3,9 @@
 const createApp = require("./app");
 const config = require("./config");
 
+// Fail fast rather than serve traffic with an insecure configuration.
+config.assertProductionConfig(config);
+
 const app = createApp();
 const server = app.listen(config.port, () => {
   console.log(
