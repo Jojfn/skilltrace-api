@@ -73,13 +73,17 @@ $env:DATA_FILE   = (Join-Path $dataDir "skilltrace.json")
 $env:ALLOW_CHAOS = $AllowChaos
 $env:JWT_SECRET  = $jwtSecret
 
-& $Pm2Cmd delete $AppName 2>$null | Out-Null
+# Removing a process that was never started is not an error, but pm2 writes
+# to stderr when it happens and PowerShell would treat that as fatal. Route
+# it through cmd so the noise is swallowed either way.
+cmd /c "`"$Pm2Cmd`" delete $AppName >nul 2>&1"
+
 & $Pm2Cmd start (Join-Path $current "src\server.js") --name $AppName `
     --time --output (Join-Path $logDir "out.log") --error (Join-Path $logDir "err.log") `
     --update-env
 if ($LASTEXITCODE -ne 0) { throw "pm2 failed to start $AppName" }
 
-& $Pm2Cmd save --force | Out-Null
+cmd /c "`"$Pm2Cmd`" save --force >nul 2>&1"
 Write-Host "[deploy] $AppName running on port $Port (env=$EnvName)"
 if ($previous) { Write-Host "[deploy] previous release retained for rollback: $previous" }
 exit 0

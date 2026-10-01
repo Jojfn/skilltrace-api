@@ -143,7 +143,9 @@ $tracked = & cmd /c "git ls-files 2>nul"
 $secretHits = @()
 foreach ($file in $tracked) {
   if (-not $file) { continue }
-  if ($file -match "^(reports/|security-evidence/|package-lock.json)") { continue }
+  # The scanner's own pattern definitions, the recorded audit evidence and the
+  # lockfile would otherwise match themselves.
+  if ($file -match "^(reports/|security-evidence/|ci/|package-lock.json)") { continue }
   if (-not (Test-Path $file)) { continue }
   $content = Get-Content -Path $file -Raw -ErrorAction SilentlyContinue
   if (-not $content) { continue }
