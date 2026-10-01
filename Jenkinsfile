@@ -162,20 +162,37 @@ pipeline {
             steps {
                 echo "Promoting the staging-verified artefact to production as v${VERSION}"
 
-                // Tag the exact commit that produced this artefact.
-                withCredentials([usernamePassword(credentialsId: 'github-pat',
-                                                  usernameVariable: 'GH_USER',
-                                                  passwordVariable: 'GH_TOKEN')]) {
-                    powershell '''
-                        $ErrorActionPreference = "Stop"
-                        git config user.email "sq.tiyu@gmail.com"
-                        git config user.name  "Jenkins (SkillTrace CI)"
-                        $tag = "v$env:VERSION"
-                        git tag -a $tag -m "Release $tag from build $env:BUILD_NUMBER ($env:GIT_COMMIT)"
-                        $remote = "https://$env:GH_USER`:$env:GH_TOKEN@github.com/Jojfn/skilltrace-api.git"
-                        git push $remote $tag
-                        Write-Host "[release] pushed tag $tag"
-                    '''
+                // Tag the exact commit that produced this artefact. The tag is
+                // always created locally; publishing it needs a credential, and a
+                // missing credential must not abort a release that is otherwise
+                // sound, so the push is attempted separately.
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+                    git config user.email "sq.tiyu@gmail.com"
+                    git config user.name  "Jenkins (SkillTrace CI)"
+                    $tag = "v$env:VERSION"
+                    git tag -f -a $tag -m "Release $tag from build $env:BUILD_NUMBER ($env:GIT_COMMIT)"
+                    Write-Host "[release] created annotated tag $tag"
+                '''
+
+                script {
+                    try {
+                        withCredentials([usernamePassword(credentialsId: 'github-pat',
+                                                          usernameVariable: 'GH_USER',
+                                                          passwordVariable: 'GH_TOKEN')]) {
+                            powershell '''
+                                $ErrorActionPreference = "Stop"
+                                $tag = "v$env:VERSION"
+                                $remote = "https://$env:GH_USER`:$env:GH_TOKEN@github.com/Jojfn/skilltrace-api.git"
+                                git push $remote $tag
+                                Write-Host "[release] published tag $tag to origin"
+                            '''
+                        }
+                    } catch (err) {
+                        echo "WARNING: could not publish the release tag (${err.message})."
+                        echo "The tag exists locally and the release continues; configure the " +
+                             "'github-pat' credential to publish tags automatically."
+                    }
                 }
 
                 // Promote the same artefact - no rebuild between environments.
